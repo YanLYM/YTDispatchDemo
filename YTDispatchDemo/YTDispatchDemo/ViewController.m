@@ -41,7 +41,14 @@
 //    [self barrier];
 //    [self dispatchAfter];
 //    [self once];
-    [self apply];
+//    [self apply];
+//    [self groupNotify];
+//    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+//       [self groupWait];
+//    });
+    [self groupEnterAndLeave];
+    NSLog(@"This is out of function");
+
 }
 
 /**
@@ -238,6 +245,7 @@
             NSLog(@"4---%@",[NSThread currentThread]);
         }
     });
+    NSLog(@"barrier---end");
 }
 /**
  延时执行block
@@ -269,11 +277,103 @@
     });
     NSLog(@"apply---end");
 }
-
-- (void)didReceiveMemoryWarning {
-    [super didReceiveMemoryWarning];
-    // Dispose of any resources that can be recreated.
+/**
+ 队列组 dispatch_group_notify  (队列任务都执行完毕后,notify中的block才执行)
+ */
+- (void)groupNotify {
+    NSLog(@"currentThread---%@",[NSThread currentThread]);
+    NSLog(@"groupNotify---begin");
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_group_async(group, dispatch_get_global_queue(0, 0), ^{
+        // 追加任务1
+        for (int i = 0; i < 2; ++i) {
+            [NSThread sleepForTimeInterval:2];              // 模拟耗时操作
+            NSLog(@"1---%@",[NSThread currentThread]);      // 打印当前线程
+        }
+    });
+    dispatch_group_async(group, dispatch_get_global_queue(0, 0), ^{
+        // 追加任务2
+        for (int i = 0; i < 2; ++i) {
+            [NSThread sleepForTimeInterval:2];              // 模拟耗时操作
+            NSLog(@"2---%@",[NSThread currentThread]);      // 打印当前线程
+        }
+    });
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        NSLog(@"notify---end---%@",[NSThread currentThread]);
+    });
 }
+/**
+ dispatch_group_wait (会阻塞当前线程,所以使用时最好放在异步线程)
+ */
+- (void)groupWait {
+    NSLog(@"currentThread---%@",[NSThread currentThread]);
+    NSLog(@"groupWait---begin");
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_group_async(group, dispatch_get_global_queue(0, 0), ^{
+        // 追加任务1
+        for (int i = 0; i < 2; ++i) {
+            [NSThread sleepForTimeInterval:2];              // 模拟耗时操作
+            NSLog(@"1---%@",[NSThread currentThread]);      // 打印当前线程
+        }
+    });
+    dispatch_group_async(group, dispatch_get_global_queue(0, 0), ^{
+        // 追加任务2
+        for (int i = 0; i < 2; ++i) {
+            [NSThread sleepForTimeInterval:2];              // 模拟耗时操作
+            NSLog(@"2---%@",[NSThread currentThread]);      // 打印当前线程
+        }
+    });
+    
+    // 等待上面的任务全部完成后，会往下继续执行（会阻塞当前线程）
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    NSLog(@"groupWait---end---%@",[NSThread currentThread]);
+}
+/**
+ * 队列组 dispatch_group_enter、dispatch_group_leave
+ dispatch_group_enter 标志着一个任务追加到 group，执行一次，相当于 group 中未执行完毕任务数+1
+ dispatch_group_leave 标志着一个任务离开了 group，执行一次，相当于 group 中未执行完毕任务数-1。
+ 当 group 中未执行完毕任务数为0的时候，才会使dispatch_group_wait解除阻塞，以及执行追加到dispatch_group_notify中的任务。
+ */
+- (void)groupEnterAndLeave
+{
+    NSLog(@"currentThread---%@",[NSThread currentThread]);  // 打印当前线程
+    NSLog(@"group---begin");
+    
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    dispatch_group_enter(group);
+    dispatch_async(queue, ^{
+        // 追加任务1
+        for (int i = 0; i < 2; ++i) {
+            [NSThread sleepForTimeInterval:2];              // 模拟耗时操作
+            NSLog(@"1---%@",[NSThread currentThread]);      // 打印当前线程
+        }
+        dispatch_group_leave(group);
+    });
+    
+    dispatch_group_enter(group);
+    dispatch_async(queue, ^{
+        // 追加任务2
+        for (int i = 0; i < 2; ++i) {
+            [NSThread sleepForTimeInterval:2];              // 模拟耗时操作
+            NSLog(@"2---%@",[NSThread currentThread]);      // 打印当前线程
+        }
+        dispatch_group_leave(group);
+    });
+    //下面的 dispatch_group_wait 解除阻塞才会执行 dispatch_group_notify 中的代码
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        
+        for (int i = 0; i < 2; ++i) {
+            [NSThread sleepForTimeInterval:2];              // 模拟耗时操作
+            NSLog(@"3---%@",[NSThread currentThread]);      // 打印当前线程
+        }
+        NSLog(@"group---end");
+    });
+    // 等待上面的任务全部完成后，会往下继续执行（会阻塞当前线程）
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    NSLog(@"group---end---currentThread---%@",[NSThread currentThread]);  // 打印当前线程
+}
+
 
 
 @end
